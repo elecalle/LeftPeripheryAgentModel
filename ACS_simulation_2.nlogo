@@ -1,4 +1,4 @@
-globals [row num-states previous-states changes-made swap-done state-mappings precedence-hierarchy]
+globals [row num-states previous-states changes-made swap-done state-mappings precedence-hierarchy simulation-done]
 
 patches-own [state letter]
 extensions [table]
@@ -12,10 +12,11 @@ extensions [table]
 ; SEMI-RANDOM SETUP
 to setup
   clear-all
+  set simulation-done false  ; Reset the flag to indicate simulation is not done
   setup-state-mappings
   setup-precedence
   set-patch-size 40
-  set num-states 8  ;; Total states: Rel (0), Mod (1), Wh (2), Int (3), Arg (4)
+  set num-states 9  ;; Total states
   set row max-pycor
   set previous-states []
 
@@ -24,8 +25,8 @@ to setup
   let special-state nobody
 
   if include-special? [
-    ;; Randomly choose one of Rel (0), Wh (2), or Int (3)
-    set special-state one-of [9 2 3]
+    ;; Randomly choose one of Rel (9), Wh (2), QEmb (8) or Int (3)
+    set special-state one-of [9 8 2 3]
 
     ;; Assign the special state to a single random patch in the row
     let special-patch one-of patches with [pycor = row]
@@ -53,7 +54,7 @@ to setup
   ]
 
   ;; Step 3: Assign valid states to all remaining patches
-  let remaining-states [5 6 7]  ;; Possible states: Arg (4), Fam (5), CT (6), ST (7)
+  let remaining-states [4 5 6 7]  ;; Possible states: Foc (4), Fam (5), CT (6), ST (7)
 
   ask patches with [pycor = row and (state = nobody or state = 0)] [
     let random-state one-of remaining-states  ;; Randomly select a state
@@ -82,10 +83,11 @@ end
 ; MANUAL SETUP
 to setup-manual
   clear-all
+  set simulation-done false  ; Reset the flag to indicate simulation is not done
   setup-state-mappings
   setup-precedence
   set-patch-size 40
-  set num-states 8  ;; Total states: Rel (9), Mod (1), Wh (2), Int (3), Arg (4), Fam (5), CT (6), ST (7)
+  set num-states 9  ;; Total states
   set row max-pycor
   set previous-states []
 
@@ -156,15 +158,16 @@ end
 ; TEST SETUP
 to setup-predefined
   clear-all
+  set simulation-done false  ; Reset the flag to indicate simulation is not done
   setup-state-mappings
   setup-precedence
   set-patch-size 40
-  set num-states 8
+  set num-states 9
   set row max-pycor
   set previous-states []
 
   ;; Predefined pattern:
-  let predefined-pattern [2 1 3 3 3]  ;
+  let predefined-pattern [6 7 5 1 4]  ;
 
   ;; Set the first row based on the predefined pattern
   ask patches with [pycor = row] [
@@ -193,6 +196,12 @@ end
 ; "GO" OPTIONS
 
 to go
+  ;; Check if the simulation is already complete
+  if simulation-done [
+    user-message "Simulation has already reached its final state."
+    stop  ; Stop further execution
+  ]
+
   print (word "Current row: " row)  ; Debugging: Print current row number
 
   ;; Check if the row has reached the bottom (final row processing)
@@ -219,6 +228,8 @@ to go
     ;; If no changes were made in the current row, process the final row and stop
     if not changes-made [
       print "No changes made. This is the final row."
+      set simulation-done true  ; Set the flag to true
+      user-message "Simulation has already reached its final state."
       tick  ; Ensure the final row is visually updated before stopping
       stop  ; End the simulation
     ]
@@ -395,6 +406,7 @@ to setup-state-mappings
   table:put state-mappings 5 ["Fam" orange "Fam"]
   table:put state-mappings 6 ["CT" magenta "CT"]
   table:put state-mappings 7 ["ST" yellow "ST"]
+  table:put state-mappings 8 ["QEmb" violet "QEmb"]
 end
 
 to-report state-to-letter [s]
@@ -420,16 +432,17 @@ to-report label-to-state [input-label]
 end
 
 
-
 to setup-precedence
-  set precedence-hierarchy table:make
-  table:put precedence-hierarchy 9 1  ; REL
-  table:put precedence-hierarchy 7 2  ; ST
-  table:put precedence-hierarchy 6 3  ; CT
-  table:put precedence-hierarchy 2 4  ; Wh
-  table:put precedence-hierarchy 8 5  ; Foc
-  table:put precedence-hierarchy 5 6  ; Fam
-  table:put precedence-hierarchy 1 7  ; Mod
+set precedence-hierarchy table:make
+table:put precedence-hierarchy 9 1  ; REL
+table:put precedence-hierarchy 7 2  ; ST
+table:put precedence-hierarchy 6 3  ; CT
+table:put precedence-hierarchy 4 4  ; Int
+table:put precedence-hierarchy 4 5  ; Foc
+table:put precedence-hierarchy 2 5  ; Wh (same as Foc)
+table:put precedence-hierarchy 5 6  ; Fam
+table:put precedence-hierarchy 1 7  ; Mod
+table:put precedence-hierarchy 8 8  ; QEmb
 end
 
 to-report precedence-rank [patch-state]
@@ -462,6 +475,20 @@ to check-mutual-exclusiveness
          (state = 3 and [state] of right-patch = 2) [
         user-message "Derivation terminated: WH and INT are adjacent."
         stop  ; Terminate the simulation if WH and INT are adjacent
+      ]
+
+      ; Check if WH (2) and FOC (4) are adjacent
+      if (state = 2 and [state] of right-patch = 4) or
+         (state = 4 and [state] of right-patch = 2) [
+        user-message "Derivation terminated: WH and FOC are adjacent."
+        stop  ; Terminate the simulation if WH and FOC are adjacent
+      ]
+
+      ; Check if QEmb (8) and WH (2) are adjacent
+      if (state = 8 and [state] of right-patch = 2) or
+         (state = 2 and [state] of right-patch = 8) [
+        user-message "Derivation terminated: QEmb and WH are adjacent."
+        stop  ; Terminate the simulation if QEmb and WH are adjacent
       ]
 
       ; INT (3) and REL (9) mutually exclusive
@@ -510,7 +537,6 @@ to print-row-states
   ;; Add a blank line after the block of rows for clarity
   print ""
 end
-
 
 
 
@@ -710,45 +736,66 @@ NIL
 @#$#@#$#@
 ## WHAT IS IT?
 
-This model simulates the behavior of linguistic elements (e.g., argument phrases, wh-elements, modifiers) in the left periphery of a sentence, inspired by principles from syntactic theory. The model aims to demonstrate how different syntactic elements interact and change positions according to predefined rules, including focus levels and precedence constraints.
+This simulation models the behavior of linguistic elements (e.g., argument phrases, wh-elements, modifiers) in the **left periphery** of a sentence, inspired by principles from syntactic theory. 
+
+The left periphery refers to the initial portion of a sentence where important syntactic and semantic elements are positioned. The model demonstrates how these elements interact and **organize dynamically** based on **localized rules**, without relying on a fixed, predefined template. The goal is to show how complex and well-formed structures can emerge from simple interactions between neighboring elements.
+
 
 ## HOW IT WORKS
 
-The model uses a grid of patches, where each patch represents a different left-peripheral constituent (e.g., an argument, a wh-element, a modifier) with an associated focus level. The patches follow rules to determine whether they should swap positions with their neighbors based on precedence rules, which are influenced by the syntactic properties and focus levels of the elements.
+The simulation represents linguistic elements as patches in a single row of a grid. Each patch corresponds to a specific type of left-peripheral constituent (e.g., modifier, topic, focus), and the simulation applies local rules to determine how these patches interact with one another.
 
-The rules are as follows:
+Here’s how the process works:
 
-- Elements with higher precedence (e.g., certain focus levels or specific syntactic types) can swap places with those of lower precedence.
-- The model evaluates each row of patches, starting from the top, applying rules to determine if swaps should occur.
-- Special transformations are applied to the final row, changing the syntactic nature of certain elements based on their properties.
+- **Precedence Rules**: each patch is assigned a precedence rank. Higher-precedence elements can move ahead of lower-precedence elements by swapping positions with their neighbors.
+- **Mutual Exclusivity Rules**: certain elements cannot appear adjacent to each other. If two mutually exclusive elements are neighbors, the simulation terminates when this conflict is detected.
+- **Row Progression**: the simulation proceeds row by row, evaluating pairs of neighboring patches sequentially from right to left. This stepwise reorganization models how linguistic structures might emerge incrementally.
 
 ## HOW TO USE IT
 
-- Setup Buttons: Use the setup options (setup, setup-manual, setup-predefined) to initialize the grid with different configurations.
-	- Setup: Randomly places elements on the top row.
-	- Setup-manual: Allows the user to input specific elements and focus levels manually.
-	- Setup-predefined: Sets up a predefined sequence of elements with specific focus values.
-- Go Button: Starts the simulation, which will continue to run until it reaches the bottom of the grid or no further changes can be made.
-- Update Method Selector: Choose between "Strict Pairwise" and "Cascade" methods for updating the grid:
-Strict Pairwise: Swaps occur strictly between each pair of adjacent patches.
-Cascade: Allows swaps to affect subsequent patches in a cascading manner.
+- **Setup Buttons**: use the setup options (setup, setup-manual, setup-predefined) to initialize the grid with different configurations.
+	- _Random Setup_: randomly places elements on the top row.
+	- _Manual Setup_: allows the user to input specific elements manually.
+	- _Test Setup_ : sets up a predefined sequence of elements.
+- **Go Button**: starts the simulation, which will continue to run until: (i) it reaches the bottom of the grid, (ii) no further changes can be made, or (iii) a mutual exclusivity violation is detected.
+- **Update Method Selector**: choose between "Strict Pairwise" and "Cascade" methods for updating the grid:
+	- _Strict Pairwise_: evaluates and updates patches one pair at a time without revisiting previous configurations.
+	- _Cascade_: allows changes in one pair to ripple backward and affect earlier patches.
+
+## TYPES OF PATCH STATES
+
+In the simulation, each patch represents a syntactic element in the left periphery, such as a question word, topic, or modifier. The type of patch state determines the role of the element and how it interacts with neighboring patches. The following patch states are included in the simulation:
+
+- **Interrogative Complementizers (Int)**: words like *if* or *whether* that introduce a question.
+- **Relative Pronouns (Rel)**: elements like *that* or *whom* that connect clauses or specify information.
+- **Modifiers (Mod)**: words or phrases that provide additional details, such as *yesterday* or *suddenly*.
+- **Wh-Elements (Wh)**: question words like *who*, *what*, or *where* in main clauses.
+- **Contrastive Topics (CT)**: topics that highlight a contrast or alternative, such as "*As for John*, he stayed home."
+- **Shifting Topics (ST)**: topics that mark a transition in the conversation, like "*Now*, about the party..."
+- **Familiar Topics (Fam)**: topics that refer to information already known or shared in the discussion.
+- **Focus Elements (Foc)**: words or phrases that emphasize new or important information, such as "It was *John* who solved the problem".
+- **Embedded Wh-Elements (QEmb)**: question words that appear in embedded clauses, such as "I wonder *what* she said".
+
+These patch states reflect the variety of syntactic elements that can occur in the **left periphery** of a sentence. Each type interacts according to precedence and exclusivity rules, determining its final position in the word order.
+
+
 
 ## THINGS TO NOTICE
 
-- Observe how elements with different focus levels and types move and interact with each other according to the rules.
-- Pay attention to how elements in the final row undergo transformations, changing their syntactic properties.
-- Notice the differences in behavior when using "Strict Pairwise" vs. "Cascade" update methods.
+- **Emergent Order**: observe how the patches rearrange themselves row by row to form a coherent word order based on precedence rules.
+- **Mutual Exclusivity Conflicts**: notice how the simulation halts when two mutually exclusive elements are adjacent.
+- **Update Methods**: compare the behaviors of the Cascade and Strict Pairwise modes to see how feedback and rigidity affect the resulting configuration.
 
 ## THINGS TO TRY
 
-Experiment with different input configurations using the setup-manual option to see how various combinations of elements and focus levels affect the outcome.
-Try running the model with both "Strict Pairwise" and "Cascade" update methods to compare the differences in how elements are rearranged.
-Adjust the initial state of elements to observe how changing focus levels influence the precedence and final transformations.
+- Use the Manual Setup option to test specific combinations of elements and see how the simulation derives their order.
+- Experiment with the Cascade and Strict Pairwise update methods to understand how each influences the final configuration.
+- Modify the precedence rankings to explore alternative syntactic arrangements and observe their effects.
 
 
 ## RELATED MODELS
 
-Cellular Automata: Similar models that use a grid of cells to demonstrate state changes based on local rules.
+This simulation is inspired by **Cellular Automata** models, which use grids of cells to demonstrate how local interactions can lead to complex patterns. Similarly, this model uses local precedence and exclusivity rules to dynamically derive linguistic structures.
 
 
 ## AUTHOR
